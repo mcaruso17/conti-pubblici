@@ -1,0 +1,13 @@
+# I documenti scaricati non vanno in git: centinaia di MB, riproducibili dal manifest.
+data/raw/
+*.part
+
+# Il manifest invece e' versionato: e' la traccia di cosa e' stato raccolto.
+!data/manifest/
+!data/manifest/*.jsonl
+!data/manifest/*.csv
+
+__pycache__/
+*.pyc
+.venv/
+.DS_Store
