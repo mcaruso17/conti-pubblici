@@ -77,19 +77,22 @@ EMBEDDED_SEEDS_YAML = """\
 # Seed di partenza per lo scraping del sito RGS (Ragioneria Generale dello Stato).
 #
 # Ogni seed definisce:
-#   category  : cartella di destinazione sotto data/raw/
-#   url       : pagina indice da cui partire
-#   depth     : profondita' massima di crawling HTML a partire dal seed
-#   years     : anni di interesse (usati solo per filtrare/annotare, non per costruire URL)
-#   note      : perche' questo seed serve all'analisi residui/economie
+#   category       : categoria di ripiego, usata solo se nessuna regola di
+#                    category_rules corrisponde all'URL del documento
+#   url            : pagina indice da cui partire
+#   depth          : profondita' massima di crawling HTML a partire dal seed
+#   allow_prefixes : (opzionale) restringe il crawling di QUESTO seed a certi path,
+#                    invece di usare i prefissi globali
+#   note           : perche' questo seed serve all'analisi residui/economie
 #
 # Il crawler NON indovina URL: parte da queste pagine, segue i link HTML che restano
-# dentro i prefissi consentiti (allow_prefixes) e scarica i documenti binari trovati.
+# dentro i prefissi consentiti e scarica i documenti binari trovati.
 
 host: www.rgs.mef.gov.it
 scheme: https
 
 # Solo i link il cui path inizia con uno di questi prefissi vengono seguiti/scaricati.
+# Il confronto e' case-insensitive (il sito usa sia /circolari/ sia /CIRCOLARI/).
 allow_prefixes:
   - /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
   - /VERSIONE-I/circolari/
@@ -103,53 +106,89 @@ doc_extensions: [pdf, xls, xlsx, xlsm, csv, zip, doc, docx, ods, txt, xml]
 
 years: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
 
+# La cartella di destinazione di un documento si decide dal SUO path, non dal seed
+# che lo ha trovato: cosi' un PDF del conto del bilancio finisce sempre nella stessa
+# cartella, che sia stato scoperto partendo dall'hub o dalla pagina specifica.
+# Prima regola che corrisponde (sottostringa, case-insensitive) vince.
+category_rules:
+  - match: /conto_del_bilancio_e_conto_del_patrimonio/conto_del_bilancio/
+    category: rendiconto/conto_del_bilancio
+  - match: /conto_generale_del_patrimonio/
+    category: rendiconto/conto_del_patrimonio
+  - match: /conto-del-bilancio/
+    category: rendiconto/conto_del_bilancio
+  - match: /rendiconto/rendiconto_economico/
+    category: rendiconto/rendiconto_economico
+  - match: /rendiconto/rendiconto_in_breve/
+    category: rendiconto/rendiconto_in_breve
+  - match: /rendiconto/
+    category: rendiconto/altro
+  - match: /bilancio_di_previsione/bilancio_finanziario/
+    category: bilancio_previsione/bilancio_finanziario
+  - match: /bilancio_di_previsione/note_integrative/
+    category: bilancio_previsione/note_integrative
+  - match: /bilancio_di_previsione/bilancio_in_breve/
+    category: bilancio_previsione/bilancio_in_breve
+  - match: /bilancio_di_previsione/
+    category: bilancio_previsione/altro
+  - match: /la_gestione_dei_residui/
+    category: gestione_bilancio/gestione_residui
+  - match: /assestamento_del_bilancio/
+    category: gestione_bilancio/assestamento
+  - match: /gestione_del_bilancio/
+    category: gestione_bilancio/altro
+  - match: /circolari/
+    category: circolari
+  - match: /bilancio_aperto/
+    category: bilancio_aperto
+
 seeds:
 
-  # ---------------------------------------------------------------- RENDICONTO
-  - category: rendiconto/hub
-    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/
-    depth: 2
-    note: >
-      Pagina madre del Rendiconto generale dello Stato. Da qui si raggiungono
-      Conto del bilancio, Conto del patrimonio, Rendiconto economico, Rendiconto in breve
-      e gli archivi degli anni precedenti.
+  # I seed specifici vengono prima degli hub: l'ordine non cambia piu' la cartella
+  # di destinazione (ci pensano le category_rules) ma tiene i log leggibili.
 
+  # ---------------------------------------------------------------- RENDICONTO
   - category: rendiconto/conto_del_bilancio
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/conto_del_bilancio/
     depth: 3
     note: >
-      FONTE PRINCIPALE. Contiene i conti consuntivi per unita' di voto e per piano
-      gestionale (file CON_<anno>_<codice amministrazione>-*.pdf) con le colonne
-      residui: consistenza iniziale, pagamenti, economie/eliminazioni, residui finali.
-      Contiene anche la Relazione illustrativa e gli allegati al Rendiconto.
+      FONTE PRINCIPALE. Conti consuntivi per unita' di voto e per piano gestionale
+      (file CON_<anno>_<codice amministrazione>-*.pdf) con le colonne dei residui:
+      consistenza iniziale, pagamenti, economie/eliminazioni, residui finali.
 
   - category: rendiconto/conto_del_patrimonio
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/conto_generale_del_patrimonio/
     depth: 3
-    note: Conto generale del patrimonio, utile per i residui passivi perenti a stato patrimoniale.
-
-  - category: rendiconto/hub_conto_bilancio_patrimonio
-    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/
-    depth: 3
-    note: Hub che espone gli archivi per anno di Conto del bilancio e Conto del patrimonio.
+    note: Conto generale del patrimonio, dove i residui perenti figurano come debiti.
 
   - category: rendiconto/rendiconto_economico
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/rendiconto_economico/
     depth: 3
-    note: Rendiconto economico (contabilita' economica analitica per centro di costo).
+    note: Contabilita' economica analitica per centro di costo.
 
   - category: rendiconto/rendiconto_in_breve
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/rendiconto_in_breve/
     depth: 2
     note: Sintesi divulgativa, utile per i totali aggregati di residui ed economie.
 
+  - category: rendiconto/altro
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/
+    depth: 3
+    note: Hub che espone gli archivi per anno di Conto del bilancio e Conto del patrimonio.
+
+  - category: rendiconto/altro
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/
+    depth: 2
+    note: Pagina madre del Rendiconto generale dello Stato.
+
   # ------------------------------------------------------- BILANCIO DI PREVISIONE
   - category: bilancio_previsione/bilancio_finanziario
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/bilancio_finanziario/
     depth: 3
     note: >
-      Legge di bilancio: stati di previsione per ministero, allegati tecnici,
-      tabelle. Archivi per triennio nella forma BF_<anno>_<anno+2>/.
+      Legge di bilancio: stati di previsione per ministero, allegati tecnici, tabelle.
+      Nello stato di previsione del MEF stanno i fondi speciali per la riassegnazione
+      dei residui passivi perenti. Archivi per triennio: BF_<anno>_<anno+2>/.
 
   - category: bilancio_previsione/note_integrative
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/note_integrative/note_integrative_al_bilancio_di_previsione/
@@ -162,21 +201,22 @@ seeds:
     note: Sintesi della legge di bilancio.
 
   # ------------------------------------------------------- GESTIONE E ASSESTAMENTO
-  - category: gestione_bilancio/assestamento
-    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/
-    depth: 3
-    note: >
-      L'assestamento e' il momento in cui i residui accertati al 1 gennaio vengono
-      rideterminati. Qui si vede la differenza tra residui presunti e residui accertati.
-
   - category: gestione_bilancio/gestione_residui
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/la_gestione_dei_residui/
     depth: 3
     note: >
-      SNODO CONCETTUALE. Pagina RGS dedicata a perenzione, economie e reiscrizione
-      dei residui passivi perenti tramite i fondi speciali.
+      SNODO CONCETTUALE. Pagina RGS su perenzione, economie e reiscrizione dei
+      residui passivi perenti tramite i fondi speciali.
 
-  - category: gestione_bilancio/hub
+  - category: gestione_bilancio/assestamento
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/
+    depth: 3
+    note: >
+      In assestamento i residui presunti iscritti a gennaio vengono sostituiti dai
+      residui accertati del rendiconto precedente. Il delta per amministrazione e'
+      un indicatore diretto di quanto viene rideterminato.
+
+  - category: gestione_bilancio/altro
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/
     depth: 2
     note: Hub gestione del bilancio (variazioni, flessibilita', decreti).
@@ -184,27 +224,38 @@ seeds:
   # ------------------------------------------------------------------- CIRCOLARI
   # Le circolari annuali di chiusura esercizio e di formazione del rendiconto
   # dettano le regole operative su perenzione, economie e reiscrizioni.
-  - category: circolari/2020
+  #
+  # Ogni anno ha allow_prefixes propri: l'indice di un anno linka gli altri anni,
+  # e senza questo vincolo il primo seed consumava da solo il budget di pagine e
+  # lasciava a secco tutti gli anni successivi.
+  - category: circolari
     url: /VERSIONE-I/circolari/2020/
     depth: 2
-  - category: circolari/2021
+    allow_prefixes: [/VERSIONE-I/circolari/2020/, /_Documenti/VERSIONE-I/CIRCOLARI/2020/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2021/
     depth: 2
-  - category: circolari/2022
+    allow_prefixes: [/VERSIONE-I/circolari/2021/, /_Documenti/VERSIONE-I/CIRCOLARI/2021/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2022/
     depth: 2
-  - category: circolari/2023
+    allow_prefixes: [/VERSIONE-I/circolari/2022/, /_Documenti/VERSIONE-I/CIRCOLARI/2022/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2023/
     depth: 2
-  - category: circolari/2024
+    allow_prefixes: [/VERSIONE-I/circolari/2023/, /_Documenti/VERSIONE-I/CIRCOLARI/2023/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2024/
     depth: 2
-  - category: circolari/2025
+    allow_prefixes: [/VERSIONE-I/circolari/2024/, /_Documenti/VERSIONE-I/CIRCOLARI/2024/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2025/
     depth: 2
-  - category: circolari/2026
+    allow_prefixes: [/VERSIONE-I/circolari/2025/, /_Documenti/VERSIONE-I/CIRCOLARI/2025/]
+  - category: circolari
     url: /VERSIONE-I/circolari/2026/
     depth: 2
+    allow_prefixes: [/VERSIONE-I/circolari/2026/, /_Documenti/VERSIONE-I/CIRCOLARI/2026/]
 """
 
 USER_AGENT = (
@@ -282,6 +333,10 @@ class Seed:
     url: str
     depth: int = 2
     note: str = ""
+    # Se valorizzato, restringe il crawling di questo seed a questi path,
+    # ignorando i prefissi globali. Serve per gli indici che linkano ad altri
+    # anni: senza vincolo il primo seed consuma il budget di pagine di tutti.
+    allow_prefixes: list[str] = field(default_factory=list)
 
 
 @dataclass
@@ -291,6 +346,7 @@ class Config:
     allow_prefixes: list[str]
     doc_extensions: set[str]
     years: list[int]
+    category_rules: list[tuple[str, str]] = field(default_factory=list)
     seeds: list[Seed] = field(default_factory=list)
 
     @classmethod
@@ -308,8 +364,13 @@ class Config:
                 url=s["url"],
                 depth=int(s.get("depth", 2)),
                 note=(s.get("note") or "").strip(),
+                allow_prefixes=list(s.get("allow_prefixes") or []),
             )
             for s in data["seeds"]
+        ]
+        rules = [
+            (r["match"].lower(), r["category"])
+            for r in (data.get("category_rules") or [])
         ]
         return cls(
             host=data["host"],
@@ -317,19 +378,38 @@ class Config:
             allow_prefixes=list(data["allow_prefixes"]),
             doc_extensions={e.lower().lstrip(".") for e in data["doc_extensions"]},
             years=[int(y) for y in data.get("years", [])],
+            category_rules=rules,
             seeds=seeds,
         )
 
     def absolute(self, url: str) -> str:
         return urljoin(f"{self.scheme}://{self.host}/", url)
 
-    def in_scope(self, url: str) -> bool:
+    def in_scope(self, url: str, prefixes: list[str] | None = None) -> bool:
         p = urlparse(url)
         if p.scheme not in ("http", "https"):
             return False
         if p.netloc.lower() != self.host.lower():
             return False
-        return any(p.path.startswith(prefix) for prefix in self.allow_prefixes)
+        # Case-insensitive: il sito usa sia /circolari/ sia /CIRCOLARI/.
+        path = p.path.lower()
+        for prefix in (prefixes or self.allow_prefixes):
+            if path.startswith(prefix.lower()):
+                return True
+        return False
+
+    def category_for(self, url: str, fallback: str) -> str:
+        """Categoria di destinazione dedotta dal path del documento.
+
+        Il seed che ha trovato il file non deve determinare dove finisce: lo stesso
+        PDF raggiunto da un hub o dalla pagina specifica deve stare nella stessa
+        cartella.
+        """
+        path = urlparse(url).path.lower()
+        for needle, category in self.category_rules:
+            if needle in path:
+                return category
+        return fallback
 
     def extension_of(self, url: str) -> str:
         return Path(urlparse(url).path).suffix.lower().lstrip(".")
@@ -390,7 +470,7 @@ class Manifest:
 class Scraper:
     def __init__(self, cfg: Config, out_dir: Path, manifest: Manifest,
                  delay: float, dry_run: bool, years: set[int] | None,
-                 max_pages: int, timeout: int):
+                 max_pages: int, timeout: int, quiet: bool = False):
         self.cfg = cfg
         self.out_dir = out_dir
         self.manifest = manifest
@@ -399,6 +479,7 @@ class Scraper:
         self.years = years
         self.max_pages = max_pages
         self.timeout = timeout
+        self.quiet = quiet
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": USER_AGENT,
@@ -409,6 +490,9 @@ class Scraper:
         self.stats = {"pagine": 0, "documenti_nuovi": 0, "documenti_saltati": 0,
                       "errori": 0, "bytes": 0}
         self.errors: list[tuple[str, str]] = []
+        # Ogni documento incontrato, anche in dry-run: serve a ispezionare la
+        # copertura (per categoria, anno, amministrazione) senza scaricare nulla.
+        self.discovered: list[dict] = []
 
     # -- rete -------------------------------------------------------------
 
@@ -483,7 +567,7 @@ class Scraper:
         tmp.replace(dest)
         return size
 
-    def download(self, url: str, category: str) -> None:
+    def download(self, url: str, seed_category: str) -> None:
         if url in self.seen_docs:
             return
         self.seen_docs.add(url)
@@ -491,7 +575,15 @@ class Scraper:
         if not self.year_allowed(url):
             return
 
+        category = self.cfg.category_for(url, seed_category)
         dest = self.dest_path(url, category)
+        self.discovered.append({
+            "url": url,
+            "category": category,
+            "anno": guess_year(url),
+            "amministrazione": self.amministrazione_of(url),
+            "path": str(dest),
+        })
         prev = self.manifest.get(url)
         if prev and Path(prev["path"]).is_absolute():
             prev_path = Path(prev["path"])
@@ -505,7 +597,8 @@ class Scraper:
             return
 
         if self.dry_run:
-            log(f"  [dry-run] {url}\n            -> {dest.relative_to(ROOT)}")
+            if not self.quiet:
+                log(f"  [dry-run] {url}")
             self.stats["documenti_nuovi"] += 1
             return
 
@@ -562,9 +655,14 @@ class Scraper:
 
     def crawl_seed(self, seed: Seed) -> None:
         start = self.cfg.absolute(seed.url)
+        prefixes = seed.allow_prefixes or None
         log(f"== SEED [{seed.category}] {start}")
+        # La pagina di partenza va sempre letta, anche se un seed precedente
+        # l'aveva gia' incrociata: altrimenti il seed diventa un no-op silenzioso.
+        self.visited_pages.discard(start)
         queue: deque[tuple[str, int]] = deque([(start, 0)])
         pages_here = 0
+        docs_before = len(self.seen_docs)
 
         while queue:
             url, depth = queue.popleft()
@@ -595,7 +693,8 @@ class Scraper:
                     continue
                 links.append(urljoin(url, raw))
 
-            docs = [l for l in links if self.cfg.is_document(l) and self.cfg.in_scope(l)]
+            docs = [l for l in links
+                    if self.cfg.is_document(l) and self.cfg.in_scope(l, prefixes)]
             for d in docs:
                 self.download(d.split("#")[0], seed.category)
 
@@ -604,11 +703,16 @@ class Scraper:
                     l = l.split("#")[0]
                     if l in self.visited_pages or self.cfg.is_document(l):
                         continue
-                    if not self.cfg.in_scope(l):
+                    if not self.cfg.in_scope(l, prefixes):
                         continue
                     queue.append((l, depth + 1))
 
             time.sleep(self.delay)
+
+        nuovi = len(self.seen_docs) - docs_before
+        log(f"   seed concluso: {pages_here} pagine, {nuovi} documenti")
+        if pages_here == 0:
+            log("   ATTENZIONE: nessuna pagina letta, controlla URL e allow_prefixes")
 
     def run(self, seeds: list[Seed]) -> None:
         for seed in seeds:
@@ -616,6 +720,18 @@ class Scraper:
 
 
 # --------------------------------------------------------------------------- cli
+
+def write_report(rows: list[dict], path: Path) -> None:
+    import csv as _csv
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    cols = ["category", "anno", "amministrazione", "url", "path"]
+    rows = sorted(rows, key=lambda r: (r["category"], r["anno"], r["url"]))
+    with path.open("w", encoding="utf-8-sig", newline="") as fh:
+        w = _csv.DictWriter(fh, fieldnames=cols, extrasaction="ignore")
+        w.writeheader()
+        w.writerows(rows)
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__,
@@ -634,6 +750,12 @@ def main() -> int:
                     help="tetto di pagine HTML visitate per singolo seed")
     ap.add_argument("--dry-run", action="store_true",
                     help="elenca i documenti senza scaricarli")
+    ap.add_argument("--report", type=Path, default=None,
+                    help="scrive in CSV tutti i documenti individuati (url, categoria, "
+                         "anno, amministrazione, destinazione). Funziona anche con --dry-run: "
+                         "serve a validare la copertura senza rifare il crawling.")
+    ap.add_argument("--quiet-dry-run", action="store_true",
+                    help="in dry-run non stampa una riga per documento (usa --report)")
     args = ap.parse_args()
 
     cfg = Config.load(args.config)
@@ -649,7 +771,7 @@ def main() -> int:
 
     manifest = Manifest(args.manifest)
     scraper = Scraper(cfg, args.out, manifest, args.delay, args.dry_run,
-                      years, args.max_pages, args.timeout)
+                      years, args.max_pages, args.timeout, args.quiet_dry_run)
 
     log(f"Host: {cfg.host} | seed: {len(seeds)} | anni: {sorted(years)} | "
         f"dry-run: {args.dry_run}")
@@ -661,6 +783,26 @@ def main() -> int:
 
     if not args.dry_run:
         manifest.rewrite_csv(args.manifest.with_suffix(".csv"))
+
+    if args.report:
+        write_report(scraper.discovered, args.report)
+        log(f"report scritto in {args.report} ({len(scraper.discovered)} documenti)")
+
+    # Ripartizione per categoria e anno: e' il controllo piu' rapido per capire se
+    # un ramo del sito e' rimasto scoperto.
+    if scraper.discovered:
+        log("---- documenti per categoria ----")
+        by_cat: dict[str, int] = {}
+        for d in scraper.discovered:
+            by_cat[d["category"]] = by_cat.get(d["category"], 0) + 1
+        for cat in sorted(by_cat):
+            log(f"  {cat:44s} {by_cat[cat]:5d}")
+        log("---- documenti per anno ----")
+        by_year: dict[str, int] = {}
+        for d in scraper.discovered:
+            by_year[d["anno"]] = by_year.get(d["anno"], 0) + 1
+        for year in sorted(by_year):
+            log(f"  {year:44s} {by_year[year]:5d}")
 
     s = scraper.stats
     log("---- riepilogo ----")

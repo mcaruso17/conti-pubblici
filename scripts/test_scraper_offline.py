@@ -86,6 +86,50 @@ check("amministrazione", sc.amministrazione_of(IN[1]), "000")
 check("filtro anno ok", sc.year_allowed(IN[1]), True)
 check("filtro anno ko", sc.year_allowed(IN[3]), False)
 
+# --- regole di categoria ----------------------------------------------------
+# Il seed che trova il file non deve decidere dove finisce: conta il path.
+check("categoria conto del bilancio",
+      cfg.category_for(IN[1], "seed/sbagliato"), "rendiconto/conto_del_bilancio")
+check("categoria patrimonio",
+      cfg.category_for("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/conto_generale_del_patrimonio/2022/Conto-patrimonio-2022.pdf",
+                       "seed/sbagliato"),
+      "rendiconto/conto_del_patrimonio")
+check("categoria circolari (path maiuscolo)",
+      cfg.category_for(IN[2], "seed/sbagliato"), "circolari")
+check("categoria bilancio finanziario",
+      cfg.category_for("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/bilancio_finanziario/2026-2028/x.pdf",
+                       "seed/sbagliato"),
+      "bilancio_previsione/bilancio_finanziario")
+check("nessuna regola -> ripiego sul seed",
+      cfg.category_for("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/altro/x.pdf",
+                       "seed/ripiego"),
+      "seed/ripiego")
+
+# La destinazione di un documento trovato da un seed hub deve comunque essere
+# la cartella specifica.
+d_hub = sc.dest_path(IN[1], cfg.category_for(IN[1], "rendiconto/altro"))
+check("hub non dirotta il file", "conto_del_bilancio" in str(d_hub), True)
+
+# --- confinamento dei seed circolari ----------------------------------------
+# Ogni anno deve restare nel proprio path: l'indice 2020 linka gli altri anni e
+# senza vincolo il primo seed consumava il budget di pagine di tutti.
+circolari = [s for s in cfg.seeds if s.url.startswith("/VERSIONE-I/circolari/")]
+check("sette seed circolari", len(circolari), 7)
+check("ogni seed circolari ha prefissi propri",
+      all(s.allow_prefixes for s in circolari), True)
+s2020 = next(s for s in circolari if "2020" in s.url)
+check("2020 accetta il proprio anno",
+      cfg.in_scope("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/CIRCOLARI/2020/12/c.pdf",
+                   s2020.allow_prefixes), True)
+check("2020 rifiuta il 2021",
+      cfg.in_scope("https://www.rgs.mef.gov.it/VERSIONE-I/circolari/2021/",
+                   s2020.allow_prefixes), False)
+
+# --- prefissi case-insensitive ----------------------------------------------
+check("prefisso maiuscolo accettato",
+      cfg.in_scope("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/CIRCOLARI/2025/27/a.pdf"),
+      True)
+
 (ROOT / "data" / "manifest" / ".test.jsonl").unlink(missing_ok=True)
 
 if fails:

@@ -17,6 +17,7 @@ esercizi successivi.
 | `config/seeds.yaml` | 19 seed su URL verificati tramite ricerca web |
 | `docs/` | mappa dei documenti e nota metodologica |
 | `data/raw/` | **vuoto** |
+| ricognizione | eseguita il 2026-09-09: 2625 documenti individuati, 0 errori |
 
 > **Perche' `data/raw/` e' vuoto.** La sessione in cui questo codice e' stato scritto
 > gira dietro un proxy di egress che nega ogni host esterno (`rgs.mef.gov.it` risponde
@@ -53,8 +54,8 @@ cartella corta, per esempio `C:\rgs`, non da `Downloads`.
 ### Comandi
 
 ```bash
-# 1. Verifica cosa verrebbe scaricato, senza scaricare nulla
-python3 scripts/scrape_rgs.py --dry-run
+# 1. Ricognizione: elenca i documenti e scrive l'inventario in CSV, senza scaricare
+python3 scripts/scrape_rgs.py --dry-run --quiet-dry-run --report ricognizione.csv
 
 # 2. Raccolta completa 2020-2026 (attesa: alcune centinaia di MB, ~1-2 ore con delay 1s)
 python3 scripts/scrape_rgs.py
@@ -65,7 +66,32 @@ python3 scripts/scrape_rgs.py --only circolari
 
 # 4. Test della logica, senza rete
 python3 scripts/test_scraper_offline.py
+python3 scripts/test_crawl_simulato.py
 ```
+
+A fine esecuzione lo scraper stampa la ripartizione dei documenti **per categoria e
+per anno**: e' il controllo piu' rapido per accorgersi che un ramo del sito e' rimasto
+scoperto. `--report` scrive lo stesso inventario in CSV (una riga per documento, con
+categoria, anno, codice amministrazione e destinazione), utile per validare la
+copertura senza rifare il crawling.
+
+### Ricognizione del 2026-09-09
+
+Prima esecuzione reale del `--dry-run`: **475 pagine visitate, 2625 documenti
+individuati, 0 errori**. I seed sono corretti. Sono emersi due difetti, ora risolti:
+
+- i sette seed delle circolari si annullavano a vicenda (l'indice 2020 linka gli altri
+  anni, li marcava come gia' visitati e consumava da solo il tetto di 400 pagine);
+- la cartella di destinazione dipendeva dal seed che trovava il file, non dal file:
+  lo stesso PDF finiva in cartelle diverse a seconda del percorso di scoperta.
+
+La cartella di destinazione di ogni documento si decide dal **suo** path
+(`category_rules` in `config/seeds.yaml`), non dal seed che lo ha trovato: lo stesso PDF
+finisce sempre nella stessa cartella, che sia stato raggiunto da un hub o dalla pagina
+specifica.
+
+Dopo ogni modifica a `config/seeds.yaml` va rigenerata la copia incorporata nello
+script con `python3 scripts/embed_config.py` (i test falliscono se le due divergono).
 
 Lo scraper e' **idempotente**: `data/manifest/manifest.jsonl` registra ogni URL
 scaricato con sha256, dimensione, ETag e data. Rilanciandolo scarica solo il nuovo.
