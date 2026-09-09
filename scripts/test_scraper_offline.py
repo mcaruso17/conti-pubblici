@@ -9,7 +9,9 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from scrape_rgs import Config, Manifest, Scraper, guess_year, safe_name  # noqa: E402
+from scrape_rgs import (  # noqa: E402
+    EMBEDDED_SEEDS_YAML, Config, Manifest, Scraper, guess_year, safe_name,
+)
 
 ROOT = Path(__file__).resolve().parent.parent
 cfg = Config.load(ROOT / "config" / "seeds.yaml")
@@ -24,6 +26,16 @@ def check(label, got, want):
 
 # --- config -----------------------------------------------------------------
 check("host", cfg.host, "www.rgs.mef.gov.it")
+
+# La copia incorporata nello script (per l'esecuzione fuori dal repo) non deve
+# divergere da config/seeds.yaml.
+check("config incorporata allineata",
+      EMBEDDED_SEEDS_YAML, (ROOT / "config" / "seeds.yaml").read_text(encoding="utf-8"))
+
+# Config.load senza file deve ricadere sulla copia incorporata.
+cfg_embedded = Config.load(ROOT / "config" / "non_esiste.yaml")
+check("fallback incorporato", len(cfg_embedded.seeds), len(cfg.seeds))
+check("fallback senza argomenti", Config.load().host, cfg.host)
 check("n_seeds", len(cfg.seeds) > 10, True)
 check("pdf riconosciuto", "pdf" in cfg.doc_extensions, True)
 

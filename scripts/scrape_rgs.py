@@ -39,10 +39,173 @@ from urllib.parse import unquote, urljoin, urlparse
 import requests
 import yaml
 
-ROOT = Path(__file__).resolve().parent.parent
+# Su Windows la console usa spesso cp1252 e i nomi file RGS contengono accenti:
+# senza questo, un semplice print del percorso fa esplodere lo script.
+for _stream in (sys.stdout, sys.stderr):
+    try:
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, ValueError):
+        pass
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+
+
+def _detect_root() -> Path:
+    """Individua la cartella di lavoro del progetto.
+
+    Funziona in tre situazioni:
+      1. script dentro il repo, in scripts/  -> root = repo
+      2. script alla radice del repo         -> root = repo
+      3. script copiato da solo (es. Downloads) -> root = cartella dello script,
+         e la configurazione viene presa da quella incorporata piu' sotto.
+    """
+    for candidate in (SCRIPT_DIR.parent, SCRIPT_DIR):
+        if (candidate / "config" / "seeds.yaml").is_file():
+            return candidate
+    return SCRIPT_DIR
+
+
+ROOT = _detect_root()
 DEFAULT_CONFIG = ROOT / "config" / "seeds.yaml"
 DEFAULT_OUT = ROOT / "data" / "raw"
 DEFAULT_MANIFEST = ROOT / "data" / "manifest" / "manifest.jsonl"
+
+# Copia incorporata di config/seeds.yaml, usata quando il file non e' presente
+# (script eseguito fuori dal repository). scripts/test_scraper_offline.py
+# verifica che le due versioni non divergano.
+EMBEDDED_SEEDS_YAML = """\
+# Seed di partenza per lo scraping del sito RGS (Ragioneria Generale dello Stato).
+#
+# Ogni seed definisce:
+#   category  : cartella di destinazione sotto data/raw/
+#   url       : pagina indice da cui partire
+#   depth     : profondita' massima di crawling HTML a partire dal seed
+#   years     : anni di interesse (usati solo per filtrare/annotare, non per costruire URL)
+#   note      : perche' questo seed serve all'analisi residui/economie
+#
+# Il crawler NON indovina URL: parte da queste pagine, segue i link HTML che restano
+# dentro i prefissi consentiti (allow_prefixes) e scarica i documenti binari trovati.
+
+host: www.rgs.mef.gov.it
+scheme: https
+
+# Solo i link il cui path inizia con uno di questi prefissi vengono seguiti/scaricati.
+allow_prefixes:
+  - /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
+  - /VERSIONE-I/circolari/
+  - /VERSIONE-I/bilancio_aperto/
+  - /_Documenti/VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
+  - /_Documenti/VERSIONE-I/Attivit--i/
+  - /_Documenti/VERSIONE-I/CIRCOLARI/
+
+# Estensioni considerate "documento" e quindi scaricate.
+doc_extensions: [pdf, xls, xlsx, xlsm, csv, zip, doc, docx, ods, txt, xml]
+
+years: [2020, 2021, 2022, 2023, 2024, 2025, 2026]
+
+seeds:
+
+  # ---------------------------------------------------------------- RENDICONTO
+  - category: rendiconto/hub
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/
+    depth: 2
+    note: >
+      Pagina madre del Rendiconto generale dello Stato. Da qui si raggiungono
+      Conto del bilancio, Conto del patrimonio, Rendiconto economico, Rendiconto in breve
+      e gli archivi degli anni precedenti.
+
+  - category: rendiconto/conto_del_bilancio
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/conto_del_bilancio/
+    depth: 3
+    note: >
+      FONTE PRINCIPALE. Contiene i conti consuntivi per unita' di voto e per piano
+      gestionale (file CON_<anno>_<codice amministrazione>-*.pdf) con le colonne
+      residui: consistenza iniziale, pagamenti, economie/eliminazioni, residui finali.
+      Contiene anche la Relazione illustrativa e gli allegati al Rendiconto.
+
+  - category: rendiconto/conto_del_patrimonio
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/conto_generale_del_patrimonio/
+    depth: 3
+    note: Conto generale del patrimonio, utile per i residui passivi perenti a stato patrimoniale.
+
+  - category: rendiconto/hub_conto_bilancio_patrimonio
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/
+    depth: 3
+    note: Hub che espone gli archivi per anno di Conto del bilancio e Conto del patrimonio.
+
+  - category: rendiconto/rendiconto_economico
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/rendiconto_economico/
+    depth: 3
+    note: Rendiconto economico (contabilita' economica analitica per centro di costo).
+
+  - category: rendiconto/rendiconto_in_breve
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/rendiconto_in_breve/
+    depth: 2
+    note: Sintesi divulgativa, utile per i totali aggregati di residui ed economie.
+
+  # ------------------------------------------------------- BILANCIO DI PREVISIONE
+  - category: bilancio_previsione/bilancio_finanziario
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/bilancio_finanziario/
+    depth: 3
+    note: >
+      Legge di bilancio: stati di previsione per ministero, allegati tecnici,
+      tabelle. Archivi per triennio nella forma BF_<anno>_<anno+2>/.
+
+  - category: bilancio_previsione/note_integrative
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/note_integrative/note_integrative_al_bilancio_di_previsione/
+    depth: 3
+    note: Note integrative al bilancio di previsione, per capitolo/azione.
+
+  - category: bilancio_previsione/bilancio_in_breve
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/bilancio_di_previsione/bilancio_in_breve/
+    depth: 2
+    note: Sintesi della legge di bilancio.
+
+  # ------------------------------------------------------- GESTIONE E ASSESTAMENTO
+  - category: gestione_bilancio/assestamento
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/
+    depth: 3
+    note: >
+      L'assestamento e' il momento in cui i residui accertati al 1 gennaio vengono
+      rideterminati. Qui si vede la differenza tra residui presunti e residui accertati.
+
+  - category: gestione_bilancio/gestione_residui
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/la_gestione_dei_residui/
+    depth: 3
+    note: >
+      SNODO CONCETTUALE. Pagina RGS dedicata a perenzione, economie e reiscrizione
+      dei residui passivi perenti tramite i fondi speciali.
+
+  - category: gestione_bilancio/hub
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/
+    depth: 2
+    note: Hub gestione del bilancio (variazioni, flessibilita', decreti).
+
+  # ------------------------------------------------------------------- CIRCOLARI
+  # Le circolari annuali di chiusura esercizio e di formazione del rendiconto
+  # dettano le regole operative su perenzione, economie e reiscrizioni.
+  - category: circolari/2020
+    url: /VERSIONE-I/circolari/2020/
+    depth: 2
+  - category: circolari/2021
+    url: /VERSIONE-I/circolari/2021/
+    depth: 2
+  - category: circolari/2022
+    url: /VERSIONE-I/circolari/2022/
+    depth: 2
+  - category: circolari/2023
+    url: /VERSIONE-I/circolari/2023/
+    depth: 2
+  - category: circolari/2024
+    url: /VERSIONE-I/circolari/2024/
+    depth: 2
+  - category: circolari/2025
+    url: /VERSIONE-I/circolari/2025/
+    depth: 2
+  - category: circolari/2026
+    url: /VERSIONE-I/circolari/2026/
+    depth: 2
+"""
 
 USER_AGENT = (
     "conti-pubblici-research/1.0 (raccolta documenti pubblici RGS; "
@@ -53,6 +216,10 @@ HREF_RE = re.compile(r"""href\s*=\s*["']([^"'#>]+)["']""", re.IGNORECASE)
 YEAR_RE = re.compile(r"(?<!\d)(20[0-3]\d)(?!\d)")
 # Nome file dei conti consuntivi: CON_<anno>_<codice amministrazione>-<n>-<titolo>.pdf
 CON_RE = re.compile(r"CON_(20\d{2})_(\d{3})", re.IGNORECASE)
+
+# Limite prudenziale di lunghezza del percorso (Windows si ferma a 260 senza
+# la chiave di registro LongPathsEnabled).
+MAX_PATH_LEN = 240 if os.name == "nt" else 4000
 
 
 # --------------------------------------------------------------------------- util
@@ -127,8 +294,14 @@ class Config:
     seeds: list[Seed] = field(default_factory=list)
 
     @classmethod
-    def load(cls, path: Path) -> "Config":
-        data = yaml.safe_load(path.read_text(encoding="utf-8"))
+    def load(cls, path: Path | None = None) -> "Config":
+        if path is not None and path.is_file():
+            raw = path.read_text(encoding="utf-8")
+        else:
+            if path is not None:
+                log(f"config non trovata in {path}: uso la configurazione incorporata")
+            raw = EMBEDDED_SEEDS_YAML
+        data = yaml.safe_load(raw)
         seeds = [
             Seed(
                 category=s["category"],
@@ -293,6 +466,23 @@ class Scraper:
 
     # -- download ----------------------------------------------------------
 
+    def _short_dest(self, url: str, dest: Path) -> Path:
+        """Nome file corto e stabile, derivato dall'URL."""
+        digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
+        suffix = Path(urlparse(url).path).suffix.lower()
+        return dest.parent / f"{digest}{suffix}"
+
+    def _stream_to(self, dest: Path, r: requests.Response) -> int:
+        tmp = dest.with_suffix(dest.suffix + ".part")
+        size = 0
+        with tmp.open("wb") as fh:
+            for chunk in r.iter_content(chunk_size=1 << 16):
+                if chunk:
+                    fh.write(chunk)
+                    size += len(chunk)
+        tmp.replace(dest)
+        return size
+
     def download(self, url: str, category: str) -> None:
         if url in self.seen_docs:
             return
@@ -324,14 +514,30 @@ class Scraper:
             return
 
         dest.parent.mkdir(parents=True, exist_ok=True)
-        tmp = dest.with_suffix(dest.suffix + ".part")
-        size = 0
-        with tmp.open("wb") as fh:
-            for chunk in r.iter_content(chunk_size=1 << 16):
-                if chunk:
-                    fh.write(chunk)
-                    size += len(chunk)
-        tmp.replace(dest)
+
+        # Windows senza long paths abilitati si ferma a 260 caratteri: accorcia
+        # in anticipo, con un nome corto deterministico tracciato nel manifest.
+        if len(str(dest)) > MAX_PATH_LEN:
+            dest = self._short_dest(url, dest)
+            log(f"  percorso troppo lungo, uso {dest.name}")
+
+        try:
+            size = self._stream_to(dest, r)
+        except OSError as exc:
+            r.close()
+            short = self._short_dest(url, dest)
+            log(f"  scrittura fallita ({exc.__class__.__name__}), riprovo come {short.name}")
+            r2 = self._get(url, stream=True)
+            if r2 is None:
+                return
+            try:
+                size = self._stream_to(short, r2)
+            except OSError as exc2:
+                log(f"  scrittura fallita di nuovo: {exc2}")
+                self.errors.append((url, f"scrittura: {exc2}"))
+                self.stats["errori"] += 1
+                return
+            dest = short
 
         rec = {
             "url": url,

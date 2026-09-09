@@ -13,7 +13,7 @@ esercizi successivi.
 
 | Componente | Stato |
 |---|---|
-| `scripts/scrape_rgs.py` | scritto, testato offline, **mai eseguito contro il sito** |
+| `scripts/scrape_rgs.py` | scritto, testato offline, **mai eseguito contro il sito**; eseguibile anche fuori dal repo |
 | `config/seeds.yaml` | 19 seed su URL verificati tramite ricerca web |
 | `docs/` | mappa dei documenti e nota metodologica |
 | `data/raw/` | **vuoto** |
@@ -25,9 +25,34 @@ esercizi successivi.
 
 ## Uso
 
-```bash
-pip install -r requirements.txt
+### Opzione A - repository completo (consigliata)
 
+```bash
+git clone https://github.com/mcaruso17/conti-pubblici.git
+cd conti-pubblici
+pip install -r requirements.txt
+```
+
+### Opzione B - solo lo script
+
+`scripts/scrape_rgs.py` funziona anche da solo, copiato in una cartella qualsiasi:
+porta dentro di se' una copia di `config/seeds.yaml` e crea `data/raw/` e
+`data/manifest/` accanto a se stesso.
+
+```powershell
+# Windows PowerShell
+py -3.13 -m pip install requests pyyaml
+py -3.13 .\scrape_rgs.py --dry-run
+```
+
+Su Windows lo script accorcia automaticamente i percorsi oltre i 260 caratteri
+(il file prende un nome breve derivato dall'URL, e il manifest conserva il legame
+con l'URL originale). Per evitare del tutto il problema conviene lavorare da una
+cartella corta, per esempio `C:\rgs`, non da `Downloads`.
+
+### Comandi
+
+```bash
 # 1. Verifica cosa verrebbe scaricato, senza scaricare nulla
 python3 scripts/scrape_rgs.py --dry-run
 
