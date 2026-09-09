@@ -97,6 +97,7 @@ allow_prefixes:
   - /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
   - /VERSIONE-I/circolari/
   - /VERSIONE-I/bilancio_aperto/
+  - /VERSIONE-I/archivio/
   - /_Documenti/VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
   - /_Documenti/VERSIONE-I/Attivit--i/
   - /_Documenti/VERSIONE-I/CIRCOLARI/
@@ -137,6 +138,12 @@ category_rules:
     category: gestione_bilancio/assestamento
   - match: /gestione_del_bilancio/
     category: gestione_bilancio/altro
+  - match: /decreti_di_variazione/
+    category: gestione_bilancio/decreti_di_variazione
+  - match: /note_integrative_a_consuntivo/
+    category: rendiconto/note_integrative_a_consuntivo
+  - match: /il_patrimonio_dello_stato/
+    category: rendiconto/patrimonio_dello_stato
   - match: /circolari/
     category: circolari
   - match: /bilancio_aperto/
@@ -203,8 +210,11 @@ seeds:
   # ------------------------------------------------------- GESTIONE E ASSESTAMENTO
   - category: gestione_bilancio/gestione_residui
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/la_gestione_dei_residui/
-    depth: 3
+    depth: 0
+    save_html: true
     note: >
+      Questa pagina non ha allegati: il contenuto e' il testo stesso, quindi va
+      salvata come HTML (save_html) invece di cercarvi documenti.
       SNODO CONCETTUALE. Pagina RGS su perenzione, economie e reiscrizione dei
       residui passivi perenti tramite i fondi speciali.
 
@@ -220,6 +230,28 @@ seeds:
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/
     depth: 2
     note: Hub gestione del bilancio (variazioni, flessibilita', decreti).
+
+  # Scoperti dalla diagnostica: erano linkati dalle pagine gia' visitate ma
+  # nessun seed li raggiungeva.
+  - category: gestione_bilancio/decreti_di_variazione
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/decreti_di_variazione/
+    depth: 3
+    note: >
+      RILEVANTE. I decreti di variazione includono i prelevamenti dai fondi
+      speciali per la reiscrizione dei residui perenti: e' l'atto che dispone
+      la singola reiscrizione, il piu' vicino a una risposta sul "perche'".
+
+  - category: rendiconto/note_integrative_a_consuntivo
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/note_integrative_a_consuntivo/
+    depth: 3
+    note: >
+      Ogni amministrazione commenta a consuntivo la propria gestione. E' il posto
+      dove un ministero puo' spiegare a parole perche' non ha speso.
+
+  - category: rendiconto/patrimonio_dello_stato
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/il_patrimonio_dello_stato/
+    depth: 2
+    note: Relazione sul patrimonio dello Stato.
 
   # ------------------------------------------------------------------- CIRCOLARI
   # Le circolari annuali di chiusura esercizio e di formazione del rendiconto
@@ -344,6 +376,9 @@ class Seed:
     # ignorando i prefissi globali. Serve per gli indici che linkano ad altri
     # anni: senza vincolo il primo seed consuma il budget di pagine di tutti.
     allow_prefixes: list[str] = field(default_factory=list)
+    # Alcune pagine RGS non hanno allegati: il contenuto e' il testo stesso.
+    # Con save_html la pagina viene salvata come documento.
+    save_html: bool = False
 
 
 @dataclass
@@ -372,6 +407,7 @@ class Config:
                 depth=int(s.get("depth", 2)),
                 note=(s.get("note") or "").strip(),
                 allow_prefixes=list(s.get("allow_prefixes") or []),
+                save_html=bool(s.get("save_html", False)),
             )
             for s in data["seeds"]
         ]
@@ -557,6 +593,36 @@ class Scraper:
 
     # -- download ----------------------------------------------------------
 
+    def save_page(self, url: str, html: str, category: str) -> None:
+        """Salva una pagina HTML come documento."""
+        if url in self.seen_docs:
+            return
+        self.seen_docs.add(url)
+        cat = self.cfg.category_for(url, category)
+        anno = guess_year(url)
+        nome = safe_name(urlparse(url).path.strip("/").replace("/", "__")) + ".html"
+        dest = self.out_dir / cat / anno / nome
+        self.discovered.append({"url": url, "category": cat, "anno": anno,
+                                "amministrazione": "", "path": str(dest)})
+        if self.dry_run:
+            if not self.quiet:
+                log(f"  [dry-run] pagina {url}")
+            self.stats["documenti_nuovi"] += 1
+            return
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(html, encoding="utf-8", errors="replace")
+        rec = {
+            "url": url, "category": cat, "anno": anno, "amministrazione": "",
+            "path": str(dest.relative_to(ROOT)) if ROOT in dest.parents else str(dest),
+            "content_type": "text/html", "bytes": len(html.encode("utf-8")),
+            "sha256": hashlib.sha256(html.encode("utf-8")).hexdigest(),
+            "etag": "", "last_modified": "",
+            "scaricato_il": datetime.now(timezone.utc).isoformat(timespec="seconds"),
+        }
+        self.manifest.add(rec)
+        self.stats["documenti_nuovi"] += 1
+        log(f"  OK pagina    {nome}")
+
     def _short_dest(self, url: str, dest: Path) -> Path:
         """Nome file corto e stabile, derivato dall'URL."""
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
@@ -693,6 +759,9 @@ class Scraper:
                 continue
 
             html = r.text
+            if seed.save_html:
+                self.save_page(url, html, seed.category)
+
             links: list[str] = []
             for raw in HREF_RE.findall(html):
                 raw = raw.strip()

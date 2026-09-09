@@ -78,3 +78,47 @@ Lo scraper non le copre. Vanno aggiunte se si vuole rispondere alla domanda sul
   come primo passo dopo lo scraping.
 - **Documenti parlamentari** (`parlamento.it`, Servizio Bilancio) - dossier sui disegni
   di legge di rendiconto e assestamento, spesso con tabelle per ministero gia' pronte.
+
+
+---
+
+# Diagnosi del 2026-09-09: perche' mancano gli anni precedenti
+
+`scripts/diagnose_page.py --preset` ha chiarito il comportamento del sito. Non e'
+un problema di JavaScript: e' che **ogni sezione pubblica solo l'anno corrente e non
+linka gli anni precedenti**.
+
+| Pagina | Documenti esposti | Anno |
+|---|---|---|
+| `bilancio_finanziario/` | 47 | solo 2026-2028 |
+| `note_integrative_al_bilancio_di_previsione/` | 17 | solo 2026-2028 |
+| `conto_del_bilancio/` | 25 | solo 2025 |
+| `conto_generale_del_patrimonio/` | 1 | solo 2025 |
+| `assestamento_del_bilancio/` | 2 | solo 2026 |
+| `la_gestione_dei_residui/` | 0 | pagina di solo testo |
+
+Le "pagine seguibili" trovate su ciascuna sono tutte navigazione laterale del sito,
+non archivi. Un crawler che segue i link non puo' arrivare agli anni vecchi: non
+esiste un link da seguire. Gli archivi esistono (per esempio
+`bilancio_finanziario/BF_2024_2026/index.html`) ma vanno indirizzati direttamente.
+
+Da qui `scripts/probe_archivi.py`: prova una lista di schemi di URL plausibili anno
+per anno e riporta quali rispondono 200. Lo schema verificato diventa un seed
+esplicito in `config/seeds.yaml`. La regola resta quella di partenza: **il crawler
+non tira a indovinare, la sonda verifica una volta sola e il risultato si scrive nella
+configurazione.**
+
+## Altre cose emerse dalla diagnostica
+
+- `la_gestione_dei_residui` non ha allegati: 0 documenti non e' un difetto, il
+  contenuto e' il testo. Ora il seed ha `save_html: true` e salva la pagina.
+- Erano linkate ma nessun seed le raggiungeva, ora aggiunte:
+  `decreti_di_variazione` (i decreti che dispongono le reiscrizioni dai fondi
+  speciali: l'atto piu' vicino a una risposta sul "perche'"),
+  `note_integrative_a_consuntivo` (dove ogni amministrazione commenta a parole la
+  propria gestione), `il_patrimonio_dello_stato`.
+- `/VERSIONE-I/archivio/index.html` esiste ed era scartato dai prefissi: ora e'
+  consentito, e la sonda verifica se e' l'indice degli archivi.
+- Fra i link scartati compaiono `openbdap.rgs.mef.gov.it` e
+  `bdap-opendata.rgs.mef.gov.it`. Confermano che gli stessi dati esistono in forma
+  strutturata. Vanno guardati prima di impegnarsi nel parsing di migliaia di PDF.

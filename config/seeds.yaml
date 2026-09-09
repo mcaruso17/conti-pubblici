@@ -21,6 +21,7 @@ allow_prefixes:
   - /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
   - /VERSIONE-I/circolari/
   - /VERSIONE-I/bilancio_aperto/
+  - /VERSIONE-I/archivio/
   - /_Documenti/VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/
   - /_Documenti/VERSIONE-I/Attivit--i/
   - /_Documenti/VERSIONE-I/CIRCOLARI/
@@ -61,6 +62,12 @@ category_rules:
     category: gestione_bilancio/assestamento
   - match: /gestione_del_bilancio/
     category: gestione_bilancio/altro
+  - match: /decreti_di_variazione/
+    category: gestione_bilancio/decreti_di_variazione
+  - match: /note_integrative_a_consuntivo/
+    category: rendiconto/note_integrative_a_consuntivo
+  - match: /il_patrimonio_dello_stato/
+    category: rendiconto/patrimonio_dello_stato
   - match: /circolari/
     category: circolari
   - match: /bilancio_aperto/
@@ -127,8 +134,11 @@ seeds:
   # ------------------------------------------------------- GESTIONE E ASSESTAMENTO
   - category: gestione_bilancio/gestione_residui
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/assestamento_del_bilancio/la_gestione_dei_residui/
-    depth: 3
+    depth: 0
+    save_html: true
     note: >
+      Questa pagina non ha allegati: il contenuto e' il testo stesso, quindi va
+      salvata come HTML (save_html) invece di cercarvi documenti.
       SNODO CONCETTUALE. Pagina RGS su perenzione, economie e reiscrizione dei
       residui passivi perenti tramite i fondi speciali.
 
@@ -144,6 +154,28 @@ seeds:
     url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/
     depth: 2
     note: Hub gestione del bilancio (variazioni, flessibilita', decreti).
+
+  # Scoperti dalla diagnostica: erano linkati dalle pagine gia' visitate ma
+  # nessun seed li raggiungeva.
+  - category: gestione_bilancio/decreti_di_variazione
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/gestione_del_bilancio/decreti_di_variazione/
+    depth: 3
+    note: >
+      RILEVANTE. I decreti di variazione includono i prelevamenti dai fondi
+      speciali per la reiscrizione dei residui perenti: e' l'atto che dispone
+      la singola reiscrizione, il piu' vicino a una risposta sul "perche'".
+
+  - category: rendiconto/note_integrative_a_consuntivo
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/note_integrative_a_consuntivo/
+    depth: 3
+    note: >
+      Ogni amministrazione commenta a consuntivo la propria gestione. E' il posto
+      dove un ministero puo' spiegare a parole perche' non ha speso.
+
+  - category: rendiconto/patrimonio_dello_stato
+    url: /VERSIONE-I/attivita_istituzionali/formazione_e_gestione_del_bilancio/rendiconto/conto_del_bilancio_e_conto_del_patrimonio/il_patrimonio_dello_stato/
+    depth: 2
+    note: Relazione sul patrimonio dello Stato.
 
   # ------------------------------------------------------------------- CIRCOLARI
   # Le circolari annuali di chiusura esercizio e di formazione del rendiconto
