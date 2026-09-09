@@ -275,8 +275,15 @@ MAX_PATH_LEN = 240 if os.name == "nt" else 4000
 
 # --------------------------------------------------------------------------- util
 
+_LOG_FILE = None
+
+
 def log(msg: str) -> None:
-    print(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}", flush=True)
+    line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
+    print(line, flush=True)
+    if _LOG_FILE is not None:
+        _LOG_FILE.write(line + "\n")
+        _LOG_FILE.flush()
 
 
 def sha256_file(path: Path) -> str:
@@ -756,7 +763,15 @@ def main() -> int:
                          "serve a validare la copertura senza rifare il crawling.")
     ap.add_argument("--quiet-dry-run", action="store_true",
                     help="in dry-run non stampa una riga per documento (usa --report)")
+    ap.add_argument("--log-file", type=Path, default=None,
+                    help="copia l'intero log su file, comodo per condividere la "
+                         "sequenza dei seed senza dipendere dal buffer del terminale")
     args = ap.parse_args()
+
+    if args.log_file:
+        global _LOG_FILE
+        args.log_file.parent.mkdir(parents=True, exist_ok=True)
+        _LOG_FILE = args.log_file.open("w", encoding="utf-8")
 
     cfg = Config.load(args.config)
     years = set(args.years) if args.years else set(cfg.years)
@@ -816,6 +831,8 @@ def main() -> int:
         log(f"URL falliti ({len(scraper.errors)}):")
         for url, why in scraper.errors[:30]:
             log(f"  {why}  {url}")
+    if _LOG_FILE is not None:
+        _LOG_FILE.close()
     return 0
 
 
