@@ -304,6 +304,15 @@ CON_RE = re.compile(r"CON_(20\d{2})_(\d{3})", re.IGNORECASE)
 # la chiave di registro LongPathsEnabled).
 MAX_PATH_LEN = 240 if os.name == "nt" else 4000
 
+# Il sito RGS risponde HTTP 200 anche agli URL inesistenti, servendo una pagina di
+# cortesia: un link rotto salverebbe dell'HTML dentro un file .pdf. I byte iniziali
+# dicono la verita' sul formato.
+FIRME = {
+    "pdf": (b"%PDF",),
+    "xlsx": (b"PK",), "xlsm": (b"PK",), "docx": (b"PK",), "ods": (b"PK",), "zip": (b"PK",),
+    "xls": (b"\xd0\xcf",), "doc": (b"\xd0\xcf",),
+}
+
 
 # --------------------------------------------------------------------------- util
 
@@ -623,6 +632,24 @@ class Scraper:
         self.stats["documenti_nuovi"] += 1
         log(f"  OK pagina    {nome}")
 
+    @staticmethod
+    def _formato_incoerente(dest: Path, content_type: str) -> str | None:
+        """Descrive il problema se il file scaricato non e' del formato atteso."""
+        ext = dest.suffix.lower().lstrip(".")
+        firme = FIRME.get(ext)
+        if not firme:
+            return None  # csv, txt, xml: nessuna firma affidabile
+        try:
+            with dest.open("rb") as fh:
+                testa = fh.read(8)
+        except OSError as exc:
+            return f"file illeggibile dopo il download ({exc.__class__.__name__})"
+        if any(testa.startswith(f) for f in firme):
+            return None
+        if "html" in content_type.lower() or testa[:15].lower().startswith((b"<!doctype", b"<html")):
+            return f"il server ha restituito HTML al posto di un .{ext} (link rotto)"
+        return f"contenuto non riconosciuto come .{ext}: inizia con {testa[:6]!r}"
+
     def _short_dest(self, url: str, dest: Path) -> Path:
         """Nome file corto e stabile, derivato dall'URL."""
         digest = hashlib.sha1(url.encode("utf-8")).hexdigest()[:12]
@@ -704,6 +731,14 @@ class Scraper:
                 self.stats["errori"] += 1
                 return
             dest = short
+
+        problema = self._formato_incoerente(dest, r.headers.get("Content-Type", ""))
+        if problema:
+            dest.unlink(missing_ok=True)
+            log(f"  SCARTATO {dest.name}: {problema}")
+            self.errors.append((url, problema))
+            self.stats["errori"] += 1
+            return
 
         rec = {
             "url": url,

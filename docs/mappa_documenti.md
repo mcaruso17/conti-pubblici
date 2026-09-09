@@ -122,3 +122,39 @@ configurazione.**
 - Fra i link scartati compaiono `openbdap.rgs.mef.gov.it` e
   `bdap-opendata.rgs.mef.gov.it`. Confermano che gli stessi dati esistono in forma
   strutturata. Vanno guardati prima di impegnarsi nel parsing di migliaia di PDF.
+
+
+---
+
+# Il sito risponde 200 a tutto (soft-404)
+
+Scoperto il 2026-09-09 con la prima versione di `probe_archivi.py`, che sondava
+~170 URL di archivio e ne dava **100% esistenti**, in ogni sezione e ogni anno.
+
+Fra i "trovati" c'era
+`.../conto_del_bilancio/2026/conti_consuntivi_per_unit_di_voto/CON_2026_020-6-Finanziario.pdf`,
+cioe' il rendiconto dell'esercizio 2026, che sara' pubblicato nel 2027. Non puo'
+esistere. La sonda era sbagliata: **su questo sito lo stato HTTP non dice nulla**,
+perche' agli URL inesistenti viene servita una pagina di cortesia con codice 200
+invece di un 404.
+
+Due conseguenze, entrambe gia' applicate al codice.
+
+**1. La sonda verifica il contenuto, non lo stato.** Due controlli indipendenti:
+
+- *controllo cieco*: ogni schema viene provato anche con l'anno 1899. Se la pagina
+  dell'anno vero ha lo stesso contenuto di quella del 1899, e' la stessa pagina di
+  cortesia;
+- *prova di utilita'*: un archivio del 2022 serve solo se linka documenti il cui
+  path contiene 2022. Zero documenti dell'anno, archivio inutile comunque sia.
+
+Per i documenti si guardano i byte iniziali (`%PDF`, `PK`, `\xd0\xcf`) e il
+Content-Type: se arriva HTML, e' cortesia travestita.
+
+**2. Lo scraper valida ogni file scaricato.** Senza questo controllo un link rotto
+avrebbe salvato una pagina HTML dentro un file `.pdf`, e il difetto sarebbe emerso
+mesi dopo, in fase di parsing, su un archivio ormai grande. Ora il file viene
+scartato e l'URL finisce fra gli errori del riepilogo.
+
+La lezione vale oltre questo progetto: quando una verifica dice che **tutto**
+esiste, la verifica e' rotta, non il mondo.

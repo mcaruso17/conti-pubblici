@@ -130,6 +130,35 @@ check("prefisso maiuscolo accettato",
       cfg.in_scope("https://www.rgs.mef.gov.it/_Documenti/VERSIONE-I/CIRCOLARI/2025/27/a.pdf"),
       True)
 
+# --- rifiuto dei soft-404 ---------------------------------------------------
+# Il sito risponde 200 anche agli URL inesistenti: un link rotto salverebbe HTML
+# dentro un file .pdf. I byte iniziali devono smascherarlo.
+import tempfile  # noqa: E402
+
+with tempfile.TemporaryDirectory() as td:
+    tmp = Path(td)
+    vero = tmp / "vero.pdf"
+    vero.write_bytes(b"%PDF-1.7\n contenuto")
+    check("pdf valido accettato", sc._formato_incoerente(vero, "application/pdf"), None)
+
+    finto = tmp / "finto.pdf"
+    finto.write_bytes(b"<!DOCTYPE html><html>Pagina non disponibile</html>")
+    got = sc._formato_incoerente(finto, "text/html;charset=UTF-8")
+    check("html spacciato per pdf rifiutato", got is not None and "HTML" in got, True)
+
+    xlsx = tmp / "foglio.xlsx"
+    xlsx.write_bytes(b"PK\x03\x04resto")
+    check("xlsx valido accettato", sc._formato_incoerente(xlsx, ""), None)
+
+    csv_ = tmp / "dati.csv"
+    csv_.write_bytes(b"a,b,c\n1,2,3")
+    check("csv non ha firma, si accetta", sc._formato_incoerente(csv_, "text/csv"), None)
+
+    rotto = tmp / "rotto.pdf"
+    rotto.write_bytes(b"\x00\x01\x02spazzatura")
+    check("contenuto ignoto rifiutato",
+          sc._formato_incoerente(rotto, "application/octet-stream") is not None, True)
+
 (ROOT / "data" / "manifest" / ".test.jsonl").unlink(missing_ok=True)
 
 if fails:
